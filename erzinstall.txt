@@ -1,0 +1,99 @@
+#first steps
+>loadkeys de
+>(network if necessary with iwctl)
+
+{
+	
+#partitioning
+
+(ex.1)
+>fdisk /dev/disk
+>>> g (for gpt) > n (for new) > make partition with +- 300M, t 1 for EFI > (optional: swap with xGB, t 19 for swap) > alles default für den Rest > w
+>>> mkfs.vfat -F32 /dev/partition1
+>>> (mkswap /dev/partition2, swapon /dev/partition2)
+>>> mkfs.btrfs /dev/partition3
+
+(ex.2)
+>>>gdisk /dev/sdX > n ... > code ef00 for EFI BOOT > n ... 
+> w > y
+>>> mkfs.fat -F32 /dev/sdX1 > mkfs.btrfs /dev/sdX2
+>>> mount /dev/sdX2 /mnt
+>btrfs su cr /mnt/@root
+>btrfs su cr /mnt/@home
+>btrfs su cr /mnt/@var
+(>btrfs su cr /mnt/@srv)
+(>btrfs su cr /mnt/@opt)
+>btrfs su cr /mnt/@tmp
+>btrfs su cr /mnt/@swap
+>>> umount /mnt
+>>> mount -o noatime,compress=lzo,subvol=@root /dev/sdX2 /mnt
+>>> mkdir /mnt/{boot,home,var,(srv,opt),tmp,swap}
+>>> mount -o no..".."..subvol=@home /dev/sdX2 /mnt/home > etc. für alle anderen subvolumes (außer var und swap)
+>>> mount -o nodatacow,subvol=@swap /dev/sdX2 /mnt/swap > dasselbe für var!
+>>> mount /dev/sdX1 /mnt/boot
+
+}
+
+(----- besser die obere variante
+ #mounting and preparing the fs
+>mount /dev/p3 /mnt
+>(subvolumes: btrfs su cr /mnt/@ ...) 
+>umount /mnt
+>mount -o noatime,compress=lzo,subvol=@ /dev/p3 /mnt
+>mkdir -p /mnt/boot/efi
+>mount /dev/p1 /mnt/boot/efi )
+
+#installing the base system
+>pacstrap /mnt base linux linux-firmware btrfs-progs (fish vim nano ...)
+
+#generate file system table
+>genfstab -U /mnt >> /mnt/etc/fstab
+
+#chrooting
+>arch-chroot /mnt
+(
+create swapfile: truncate -s 0 /swap/swapfile 
+>>>chattr +C /swap/swapfile
+>>>btrfs property set /swap/swapfile compression none
+>>>dd if=/dev/zero of=/swap/swapfile bs=1G count=2 status=progress
+>>>chmod 600 /swap/swapfile
+>>>mkswap /swap/swapfile
+>>>swapon /swap/swapfile
+>>>vim /etc/fstab > 
+put: /swap/swapfile none swap defaults 0 0 right at the end
+)
+>ln -sf /usr/share/zoneinfo/Europe/Berlin /etc/localtime (timezone)
+>hwclock --systohc
+>vim /etc/locale.gen >> uncomment a locale
+>locale-gen
+>echo "KEYMAP=de" >> /etc/vconsole.conf
+>echo "LANG=(previously chosen locale)" >> /etc/locale.conf
+>echo "desired hostname" >> /etc/hostname
+>vim /etc/hosts >>>
+
+127.0.0.1	localhost
+::1		localhost
+127.0.1.1	chosenhostname.localdomain	chosenhostname
+
+>passwd
+>pacman -S grub grub-btrfs efibootmgr networkmanager wireless_tools wpa_supplicant (os-prober) mtools dosfstools base-devel linux-headers ufw btrfs-progs
+>(for grub-btrfs?: vim /etc/mkinitcpio.conf -> MODULES=(btrfs) ->mkinitcpio -p linux)
+>grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB 
+>grub-mkconfig -o /boot/grub/grub.cfg
+>systemctl enable NetworkManager
+>systemctl enable ufw
+>useradd -mG wheel desiredusername
+>passwd desiredusername
+>EDITOR=vim visudo >> comment out the appropriate wheel group entry
+
+#last steps
+>exit exit
+>umount -a (errors are fine)
+>reboot
+
+#additional
+>graphics-drivers: pacman -S xf86-video-qxl (graphics for vm) (intel= xf86-video-intel)  
+>xorg 
+>kde: sddm (systemctl enable sddm) plasma (kde-applications) 
+>xfce: xfce4
+>... 
